@@ -204,50 +204,7 @@ function draw() {
                   pixels[canvasIndex] = 255;   
                   pixels[canvasIndex+1] = 255; 
                   pixels[canvasIndex+2] = 255; 
-                  pixels[canvasIndex+3] = 255; 
-              }
-          } else {
-              // 인식되지 않은 흰색 바탕은 검은색으로 표시
-              if (isBinaryView) {
-                  let canvasIndex = (y * width + x) * 4;
-                  pixels[canvasIndex] = 0;
-                  pixels[canvasIndex+1] = 0;
-                  pixels[canvasIndex+2] = 0;
-                  pixels[canvasIndex+3] = 255;
-              }
-          }
-      }
-  }
-
-  if (isBinaryView) {
-      updatePixels(); 
-  } else {
-      push();
-      if (isFlipped) { translate(width, 0); scale(-1, 1); }
-      image(video, 0, 0, width, height);
-      pop();
-  }
-
-  if (count > 50) { 
-      isLineDetected = true;
-      let laneCenterX = sumX / count; 
-      let screenCenterX = width / 2;  
-      
-      let rawError = laneCenterX - screenCenterX;
-      currentError = Math.round(map(rawError, -width/2, width/2, -100, 100));
-      currentError = constrain(currentError, -100, 100);
-
-      fill(255, 0, 0); noStroke();
-      circle(laneCenterX, height - 20, 15);
-      
-      stroke(0, 255, 0); strokeWeight(2); 
-      line(screenCenterX, height, screenCenterX, height - 50);
-
-      if (isTracking) {
-          statusBadge.html(`전송 중: Error ${currentError}`);
-          statusBadge.style('background-color', 'rgba(26, 115, 232, 0.8)');
-      } else {
-          statusBadge.html(`설정 모드: Error ${currentError}`);
+                  pixels[canvas과: Error `인식 결과: Error ${c;
           statusBadge.style('background-color', 'rgba(0,0,0,0.6)');
       }
 
@@ -360,3 +317,4 @@ async function sendBluetoothData(data) {
     isSendingData = false;
   }
 }
+
