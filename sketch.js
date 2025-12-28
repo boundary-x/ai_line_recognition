@@ -1,8 +1,8 @@
 /**
  * sketch.js
  * Boundary X: AI Autonomous Driving [Line Tracer]
- * Algorithm: Multi-ROI Vision Processing (Bottom, Middle, Top)
- * Visualization: Dynamic Path Line
+ * Algorithm: Multi-ROI Vision Processing (Bottom, Middle)
+ * Visualization: Path Line (Green) + Lane Borders (Yellow)
  */
 
 // Bluetooth UUIDs
@@ -163,7 +163,7 @@ function switchCamera() {
   setTimeout(setupCamera, 500);
 }
 
-// === [핵심] 다중 스캔 알고리즘 ===
+// === [핵심] 다중 스캔 및 시각화 알고리즘 ===
 
 function draw() {
   background(0);
@@ -177,18 +177,11 @@ function draw() {
   video.loadPixels();
   if (isBinaryView) loadPixels();
 
-  // 3개의 영역으로 분할 스캔 (Bottom, Middle, Top)
-  // height(240) 기준: 
-  // Bottom: 160~240 (가장 중요, 현재 위치)
-  // Middle: 80~160  (중간 경로)
-  // Top:    0~80    (미래 경로 - 보통 너무 멀어서 노이즈가 많으므로 Middle까지만 쓰는 게 안정적일 수 있음)
-  
-  // 여기서는 Bottom과 Middle 2개 영역만 사용하여 안정성 확보
   let sliceHeight = 80;
-  let bottomResult = processSlice(height - sliceHeight, height); // 하단 (현재)
-  let middleResult = processSlice(height - sliceHeight * 2, height - sliceHeight); // 상단 (미래)
+  // 다중 스캔 실행 (결과에는 중심점 외에 좌/우 경계 좌표도 포함됨)
+  let bottomResult = processSlice(height - sliceHeight, height);
+  let middleResult = processSlice(height - sliceHeight * 2, height - sliceHeight);
 
-  // 렌더링 (원본 또는 흑백)
   if (isBinaryView) {
       updatePixels(); 
   } else {
@@ -198,14 +191,11 @@ function draw() {
       pop();
   }
 
-  // 결과 종합 및 시각화
   if (bottomResult.detected) {
       isLineDetected = true;
       
       // 오차 계산 (가중치 적용: 하단 70%, 상단 30%)
-      // 상단도 인식되었다면 미래 예측 반영, 아니면 하단만 사용
       let targetX = bottomResult.centerX;
-      
       if (middleResult.detected) {
           targetX = (bottomResult.centerX * 0.7) + (middleResult.centerX * 0.3);
       }
@@ -216,26 +206,39 @@ function draw() {
       currentError = Math.round(map(rawError, -width/2, width/2, -100, 100));
       currentError = constrain(currentError, -100, 100);
 
-      // [시각화 1] 인식된 경로 선 그리기 (Path Line)
-      // 중앙 수직선 대신, 인식된 점들을 잇는 선을 그립니다.
+      // [시각화 1] 인식된 경로 선 (Path Line) - 녹색
       stroke(0, 255, 0); strokeWeight(4); noFill();
       beginShape();
-      vertex(screenCenterX, height); // 내 로봇 위치 (화면 중앙 하단)
-      vertex(bottomResult.centerX, height - sliceHeight/2); // 하단 인식점
+      vertex(screenCenterX, height); 
+      vertex(bottomResult.centerX, height - sliceHeight/2); 
       if (middleResult.detected) {
-          vertex(middleResult.centerX, height - sliceHeight * 1.5); // 상단 인식점
+          vertex(middleResult.centerX, height - sliceHeight * 1.5); 
       }
       endShape();
 
-      // [시각화 2] 각 인식 지점 점 찍기
+      // [시각화 2] 인식된 차선 테두리 (Lane Borders) - 노란색
+      stroke(255, 255, 0); strokeWeight(2); noFill();
+      
+      // 왼쪽 테두리 그리기
+      beginShape();
+      vertex(bottomResult.minX, height - sliceHeight/2);
+      if (middleResult.detected) vertex(middleResult.minX, height - sliceHeight * 1.5);
+      endShape();
+      
+      // 오른쪽 테두리 그리기
+      beginShape();
+      vertex(bottomResult.maxX, height - sliceHeight/2);
+      if (middleResult.detected) vertex(middleResult.maxX, height - sliceHeight * 1.5);
+      endShape();
+
+      // [시각화 3] 중심점 점 찍기 - 빨강
       fill(255, 0, 0); noStroke();
       circle(bottomResult.centerX, height - sliceHeight/2, 10);
       if (middleResult.detected) {
-          fill(255, 100, 100); // 상단은 연한 빨강
+          fill(255, 100, 100); 
           circle(middleResult.centerX, height - sliceHeight * 1.5, 8);
       }
 
-      // 뱃지 상태 업데이트
       if (isTracking) {
           statusBadge.html(`전송 중: Error ${currentError}`);
           statusBadge.style('background-color', 'rgba(26, 115, 232, 0.8)');
@@ -258,18 +261,20 @@ function draw() {
       sendDataPeriodically();
   }
 
-  // ROI 영역 박스 그리기 (디버깅용, 얇게)
+  // ROI 영역 박스 (디버깅용)
   noFill(); stroke(255, 255, 255, 100); strokeWeight(1);
-  rect(0, height - sliceHeight, width, sliceHeight); // Bottom Box
-  rect(0, height - sliceHeight * 2, width, sliceHeight); // Middle Box
+  rect(0, height - sliceHeight, width, sliceHeight); 
+  rect(0, height - sliceHeight * 2, width, sliceHeight);
 }
 
-// 영역별 스캔 함수
+// 영역별 스캔 함수 (경계값 Min/Max X 추가)
 function processSlice(startY, endY) {
     let sumX = 0;
     let count = 0;
+    let minX = width; // 가장 왼쪽 픽셀
+    let maxX = 0;     // 가장 오른쪽 픽셀
     
-    for (let y = startY; y < endY; y += 5) { // 5픽셀 간격 스캔
+    for (let y = startY; y < endY; y += 5) { 
         for (let x = 0; x < width; x += 5) {
             let pixelX = isFlipped ? (width - 1 - x) : x;
             let index = (y * width + pixelX) * 4;
@@ -279,12 +284,13 @@ function processSlice(startY, endY) {
             let b = video.pixels[index + 2];
             let brightness = (r + g + b) / 3;
             
-            // 검은 선 인식 (< threshold)
-            if (brightness < thresholdVal) {
+            if (brightness < thresholdVal) { // 검은 선 인식
                 sumX += x;
                 count++;
+                // 경계값 갱신
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
                 
-                // 흑백 모드 시각화
                 if (isBinaryView) {
                     let canvasIndex = (y * width + x) * 4;
                     pixels[canvasIndex] = 255; pixels[canvasIndex+1] = 255; 
@@ -300,10 +306,11 @@ function processSlice(startY, endY) {
         }
     }
 
-    if (count > 20) { // 최소 픽셀 수
-        return { detected: true, centerX: sumX / count };
+    if (count > 20) { 
+        // 중심점과 함께 테두리 좌표(minX, maxX)도 반환
+        return { detected: true, centerX: sumX / count, minX: minX, maxX: maxX };
     } else {
-        return { detected: false, centerX: width / 2 };
+        return { detected: false, centerX: width / 2, minX: 0, maxX: 0 };
     }
 }
 
