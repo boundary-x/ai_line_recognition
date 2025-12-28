@@ -199,12 +199,7 @@ function draw() {
               sumX += x;
               count++;
               // 흑백 모드 시각화: 인식된 검은 선을 흰색으로 표시 (강조)
-              if (isBinaryView) {
-                  let canvasIndex = (y * width + x) * 4;
-                  pixels[canvasIndex] = 255;   
-                  pixels[canvasIndex+1] = 255; 
-                  pixels[canvasIndex+2] = 255; 
-                  pixels[canvas과: Error `인식 결과: Error ${c;
+              if (isBinaryView) 과: Error ${currentError}`);
           statusBadge.style('background-color', 'rgba(0,0,0,0.6)');
       }
 
@@ -317,4 +312,3 @@ async function sendBluetoothData(data) {
     isSendingData = false;
   }
 }
-
