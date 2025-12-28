@@ -3,14 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>바운더리엑스 AI 모델학습</title>
+  <title>바운더리엑스 AI 자율주행</title>
   
   <link rel="icon" href="https://raw.githubusercontent.com/boundary-x/ai_teachable_machine/refs/heads/main/Favicon.png"/> 
   
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.9.0/p5.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.9.0/addons/p5.dom.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.9.0/addons/p5.sound.min.js"></script>
-  <script src="https://unpkg.com/ml5@0.5.0/dist/ml5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.dom.min.js"></script>
   
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
   <link rel="stylesheet" type="text/css" href="style.css">
@@ -22,38 +20,63 @@
       <a href="https://boundaryx.io">
         <img src="https://raw.githubusercontent.com/boundary-x/ai_voice_recognition/refs/heads/main/boundaryx_logo.png" alt="Logo">
       </a>
-      AI 모델학습
+      AI 자율주행 <span class="tracer-badge">Line Tracer</span>
     </div>
     <a href="https://boundaryx.io/59" class="back-button">돌아가기</a>
   </header>
 
   <main>
-    <div id="p5-container" class="canvas-container"></div>
+    <div id="p5-container" class="canvas-container">
+        <div id="status-badge" class="status-badge">인식 대기 중</div>
+    </div>
     
     <section class="controls">
       
       <div class="control-group">
-        <h3>1. 카메라 설정</h3>
-        <p>카메라 버튼을 통해 화면을 설정해주세요.</p>
-        <div id="camera-control-buttons" class="button-group"></div>
+        <h3>👁️ 비전 인식 설정</h3>
+        <p>주변 밝기에 맞춰 흰색 차선이 잘 보이도록 <strong>임계값</strong>을 조절하세요.</p>
+        
+        <div class="slider-container">
+            <label for="threshold-slider">임계값 (Threshold): <span id="threshold-value">150</span></label>
+            <input type="range" id="threshold-slider" min="0" max="255" value="150" class="range-slider">
+            <div class="slider-labels">
+                <span>어둡게 인식</span>
+                <span>밝게 인식</span>
+            </div>
+        </div>
+
+        <button id="toggle-view-btn" class="view-mode-button">🌑 흑백(이진화) 모드 보기</button>
       </div>
 
       <div class="control-group">
-        <h3>2. 기기 연결</h3>
-        <p>블루투스 연결 버튼을 클릭해 마이크로비트를 연결해주세요.</p>
-        <div id="bluetoothStatus">상태: 연결 대기 중</div>
+        <h3>📡 데이터 모니터링</h3>
+        <p>AI가 계산한 오차값(Error)을 실시간으로 확인합니다.</p>
+        
+        <div class="gauge-container">
+            <div class="gauge-bg">
+                <div id="gauge-bar" class="gauge-bar"></div>
+                <div class="gauge-center-line"></div>
+            </div>
+            <div class="gauge-labels">
+                <span>◀ 좌회전 (-)</span>
+                <span id="error-display-text">Error: 0</span>
+                <span>우회전 (+) ▶</span>
+            </div>
+        </div>
+        
+        <div id="bluetooth-data-display" class="data-display">전송 데이터: 대기 중...</div>
+      </div>
+
+      <div class="control-group">
+        <h3>🔗 기기 연결</h3>
+        <p>마이크로비트를 연결하여 자율주행을 시작하세요.</p>
+        <div id="bluetoothStatus" style="margin-top: 10px;">상태: 연결 대기 중</div>
         <div id="bluetooth-control-buttons" class="button-group" style="margin-top: 1.5rem;"></div>
       </div>
 
       <div class="control-group">
-        <h3>3. AI 모델 로드</h3>
-        <p>Teachable Machine 모델 전체 주소를 입력하고 로드해주세요.</p>
-        
-        <div id="model-select-and-link" class="model-selection"></div>
-        
-        <div id="model-key-container" class="model-key" style="margin-top: 10px; margin-bottom: 15px;"></div>
-        
-        <div id="model-action-buttons" class="button-group"></div>
+        <h3>📷 카메라 설정</h3>
+        <div id="camera-control-buttons" class="button-group"></div>
       </div>
 
     </section>
@@ -70,33 +93,7 @@
             <p class="copyright">© 2024 Boundary X Co. All rights reserved.</p>
           </address>
         </div>
-
-        <div class="footer-links">
-          <div class="link-column">
-            <h4>제품 소개</h4>
-            <ul>
-              <li>
-                <a href="https://boundaryx.io/shop/?idx=25" target="_blank">AI 비트런</a>
-                <span class="link-desc">마이크로비트 기반 이족보행로봇</span>
-              </li>
-              <li>
-                <a href="https://boundaryx.io/shop/?idx=26" target="_blank">AI 포니봇</a>
-                <span class="link-desc">마이크로비트 기반 모빌리티로봇</span>
-              </li>
-            </ul>
-          </div>
-
-          <div class="link-column">
-            <h4>고객 지원</h4>
-            <ul>
-              <li>
-                <a href="https://boundaryx.io/contact" target="_blank">문의처</a>
-                <span class="link-desc">제품 문의 | 제휴 문의 | 연수 문의</span>
-              </li>
-            </ul>
-          </div>
         </div>
-      </div>
     </div>
   </footer>
 
