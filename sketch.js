@@ -237,8 +237,8 @@ function draw() {
       fill(255, 0, 0); noStroke();
       circle(laneCenterX, height - 20, 15);
       
-      // 시각화: 로봇 중심선 (녹색 선)
-      stroke(0, 255, 0); strokeWidth(2);
+      // [수정] 올바른 함수명 사용
+      stroke(0, 255, 0); strokeWeight(2); 
       line(screenCenterX, height, screenCenterX, height - 50);
 
       // 텍스트 업데이트
