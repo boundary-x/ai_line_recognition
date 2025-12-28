@@ -1,8 +1,8 @@
 /**
  * sketch.js
  * Boundary X: AI Autonomous Driving [Line Tracer]
- * Algorithm: Vision Processing (Detects BLACK line on WHITE floor)
- * Resolution: 320x240 (QVGA) for High FPS
+ * Algorithm: Multi-ROI Vision Processing (Bottom, Middle, Top)
+ * Visualization: Dynamic Path Line
  */
 
 // Bluetooth UUIDs
@@ -163,7 +163,7 @@ function switchCamera() {
   setTimeout(setupCamera, 500);
 }
 
-// === [핵심] 비전 처리 및 라인 인식 알고리즘 ===
+// === [핵심] 다중 스캔 알고리즘 ===
 
 function draw() {
   background(0);
@@ -177,48 +177,18 @@ function draw() {
   video.loadPixels();
   if (isBinaryView) loadPixels();
 
-  let startY = Math.floor(height * 0.66);
-  let endY = height;
-  let sumX = 0;   
-  let count = 0;  
+  // 3개의 영역으로 분할 스캔 (Bottom, Middle, Top)
+  // height(240) 기준: 
+  // Bottom: 160~240 (가장 중요, 현재 위치)
+  // Middle: 80~160  (중간 경로)
+  // Top:    0~80    (미래 경로 - 보통 너무 멀어서 노이즈가 많으므로 Middle까지만 쓰는 게 안정적일 수 있음)
+  
+  // 여기서는 Bottom과 Middle 2개 영역만 사용하여 안정성 확보
+  let sliceHeight = 80;
+  let bottomResult = processSlice(height - sliceHeight, height); // 하단 (현재)
+  let middleResult = processSlice(height - sliceHeight * 2, height - sliceHeight); // 상단 (미래)
 
-  for (let y = startY; y < endY; y += 4) {
-      for (let x = 0; x < width; x += 4) {
-          let pixelX = isFlipped ? (width - 1 - x) : x;
-          let index = (y * width + pixelX) * 4;
-          
-          let r = video.pixels[index];
-          let g = video.pixels[index + 1];
-          let b = video.pixels[index + 2];
-          
-          // 밝기 계산
-          let brightness = (r + g + b) / 3;
-          
-          // [수정 1] 검은 선 인식 로직 (임계값보다 어두우면 인식)
-          if (brightness < thresholdVal) {
-              sumX += x;
-              count++;
-              // 흑백 모드 시각화: 검은 선을 잘 보이게 흰색으로 표시
-              if (isBinaryView) {
-                  let canvasIndex = (y * width + x) * 4;
-                  pixels[canvasIndex] = 255;   
-                  pixels[canvasIndex+1] = 255; 
-                  pixels[canvasIndex+2] = 255; 
-                  pixels[canvasIndex+3] = 255; 
-              }
-          } else {
-              // 배경(흰색)은 검은색으로 처리
-              if (isBinaryView) {
-                  let canvasIndex = (y * width + x) * 4;
-                  pixels[canvasIndex] = 0;
-                  pixels[canvasIndex+1] = 0;
-                  pixels[canvasIndex+2] = 0;
-                  pixels[canvasIndex+3] = 255;
-              }
-          }
-      }
-  }
-
+  // 렌더링 (원본 또는 흑백)
   if (isBinaryView) {
       updatePixels(); 
   } else {
@@ -228,22 +198,44 @@ function draw() {
       pop();
   }
 
-  if (count > 50) { 
+  // 결과 종합 및 시각화
+  if (bottomResult.detected) {
       isLineDetected = true;
-      let laneCenterX = sumX / count; 
-      let screenCenterX = width / 2;  
       
-      let rawError = laneCenterX - screenCenterX;
+      // 오차 계산 (가중치 적용: 하단 70%, 상단 30%)
+      // 상단도 인식되었다면 미래 예측 반영, 아니면 하단만 사용
+      let targetX = bottomResult.centerX;
+      
+      if (middleResult.detected) {
+          targetX = (bottomResult.centerX * 0.7) + (middleResult.centerX * 0.3);
+      }
+
+      let screenCenterX = width / 2;
+      let rawError = targetX - screenCenterX;
+      
       currentError = Math.round(map(rawError, -width/2, width/2, -100, 100));
       currentError = constrain(currentError, -100, 100);
 
-      fill(255, 0, 0); noStroke();
-      circle(laneCenterX, height - 20, 15);
-      
-      stroke(0, 255, 0); strokeWeight(2); 
-      line(screenCenterX, height, screenCenterX, height - 50);
+      // [시각화 1] 인식된 경로 선 그리기 (Path Line)
+      // 중앙 수직선 대신, 인식된 점들을 잇는 선을 그립니다.
+      stroke(0, 255, 0); strokeWeight(4); noFill();
+      beginShape();
+      vertex(screenCenterX, height); // 내 로봇 위치 (화면 중앙 하단)
+      vertex(bottomResult.centerX, height - sliceHeight/2); // 하단 인식점
+      if (middleResult.detected) {
+          vertex(middleResult.centerX, height - sliceHeight * 1.5); // 상단 인식점
+      }
+      endShape();
 
-      // [수정 2] 뱃지 텍스트 변경 (설정 모드 -> 인식 결과)
+      // [시각화 2] 각 인식 지점 점 찍기
+      fill(255, 0, 0); noStroke();
+      circle(bottomResult.centerX, height - sliceHeight/2, 10);
+      if (middleResult.detected) {
+          fill(255, 100, 100); // 상단은 연한 빨강
+          circle(middleResult.centerX, height - sliceHeight * 1.5, 8);
+      }
+
+      // 뱃지 상태 업데이트
       if (isTracking) {
           statusBadge.html(`전송 중: Error ${currentError}`);
           statusBadge.style('background-color', 'rgba(26, 115, 232, 0.8)');
@@ -266,8 +258,53 @@ function draw() {
       sendDataPeriodically();
   }
 
-  noFill(); stroke(0, 255, 0); strokeWeight(2);
-  rect(0, startY, width, height - startY);
+  // ROI 영역 박스 그리기 (디버깅용, 얇게)
+  noFill(); stroke(255, 255, 255, 100); strokeWeight(1);
+  rect(0, height - sliceHeight, width, sliceHeight); // Bottom Box
+  rect(0, height - sliceHeight * 2, width, sliceHeight); // Middle Box
+}
+
+// 영역별 스캔 함수
+function processSlice(startY, endY) {
+    let sumX = 0;
+    let count = 0;
+    
+    for (let y = startY; y < endY; y += 5) { // 5픽셀 간격 스캔
+        for (let x = 0; x < width; x += 5) {
+            let pixelX = isFlipped ? (width - 1 - x) : x;
+            let index = (y * width + pixelX) * 4;
+            
+            let r = video.pixels[index];
+            let g = video.pixels[index + 1];
+            let b = video.pixels[index + 2];
+            let brightness = (r + g + b) / 3;
+            
+            // 검은 선 인식 (< threshold)
+            if (brightness < thresholdVal) {
+                sumX += x;
+                count++;
+                
+                // 흑백 모드 시각화
+                if (isBinaryView) {
+                    let canvasIndex = (y * width + x) * 4;
+                    pixels[canvasIndex] = 255; pixels[canvasIndex+1] = 255; 
+                    pixels[canvasIndex+2] = 255; pixels[canvasIndex+3] = 255; 
+                }
+            } else {
+                if (isBinaryView) {
+                    let canvasIndex = (y * width + x) * 4;
+                    pixels[canvasIndex] = 0; pixels[canvasIndex+1] = 0; 
+                    pixels[canvasIndex+2] = 0; pixels[canvasIndex+3] = 255;
+                }
+            }
+        }
+    }
+
+    if (count > 20) { // 최소 픽셀 수
+        return { detected: true, centerX: sumX / count };
+    } else {
+        return { detected: false, centerX: width / 2 };
+    }
 }
 
 function updateGaugeUI() {
