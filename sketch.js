@@ -1,7 +1,7 @@
 /**
  * sketch.js
  * Boundary X: AI Autonomous Driving [Line Tracer]
- * Algorithm: Vision Processing (Detects BLACK line on WHITE floor)
+ * Algorithm: Vision Processing (Thresholding -> Centroid -> Error)
  * Resolution: 320x240 (QVGA) for High FPS
  */
 
@@ -27,7 +27,7 @@ let isBinaryView = false;
 // Data Variables
 let currentError = 0;
 let isLineDetected = false;
-let isTracking = false;
+let isTracking = false; // [핵심] 인식(전송) 활성화 여부
 
 // UI Elements
 let statusBadge;
@@ -84,6 +84,7 @@ function stopVideo() {
 }
 
 function createUI() {
+  // 1. 슬라이더 연결
   thresholdSlider = select('#threshold-slider');
   const thresholdLabel = select('#threshold-value');
   
@@ -92,6 +93,7 @@ function createUI() {
       thresholdLabel.html(thresholdVal);
   });
 
+  // 2. 뷰 모드 토글
   toggleViewBtn = select('#toggle-view-btn');
   toggleViewBtn.mousePressed(() => {
       isBinaryView = !isBinaryView;
@@ -104,11 +106,13 @@ function createUI() {
       }
   });
 
+  // 3. UI 요소
   statusBadge = select('#status-badge');
   errorDisplayText = select('#error-display-text');
   gaugeBar = select('#gauge-bar');
   btDataDisplay = select('#bluetooth-data-display');
 
+  // 4. 버튼 생성
   let flipButton = createButton("좌우 반전");
   flipButton.parent('camera-control-buttons');
   flipButton.addClass('start-button');
@@ -129,6 +133,7 @@ function createUI() {
   disconnectBluetoothButton.addClass('stop-button');
   disconnectBluetoothButton.mousePressed(disconnectBluetooth);
 
+  // [신규] 라인 인식 제어 버튼
   let startTrackingBtn = createButton("라인 인식 시작");
   startTrackingBtn.parent('tracking-control-buttons');
   startTrackingBtn.addClass('start-button');
@@ -150,7 +155,7 @@ function startTracking() {
 
 function stopTracking() {
     isTracking = false;
-    sendBluetoothData("stop");
+    sendBluetoothData("stop"); // 정지 신호 전송
     btDataDisplay.html("전송됨: stop (중지됨)");
     btDataDisplay.style('color', '#EA4335');
     console.log("Tracking Stopped");
@@ -163,7 +168,7 @@ function switchCamera() {
   setTimeout(setupCamera, 500);
 }
 
-// === [핵심] 비전 처리 및 라인 인식 알고리즘 ===
+// === 비전 처리 및 라인 인식 ===
 
 function draw() {
   background(0);
@@ -191,14 +196,11 @@ function draw() {
           let g = video.pixels[index + 1];
           let b = video.pixels[index + 2];
           
-          // 밝기 계산
           let brightness = (r + g + b) / 3;
           
-          // [수정됨] 임계값보다 어두우면(작으면) 검은 선으로 인식
-          if (brightness < thresholdVal) {
+          if (brightness > thresholdVal) {
               sumX += x;
               count++;
-              // 흑백 모드 시각화: 인식된 검은 선을 흰색으로 표시 (강조)
               if (isBinaryView) {
                   let canvasIndex = (y * width + x) * 4;
                   pixels[canvasIndex] = 255;   
@@ -207,7 +209,6 @@ function draw() {
                   pixels[canvasIndex+3] = 255; 
               }
           } else {
-              // 인식되지 않은 흰색 바탕은 검은색으로 표시
               if (isBinaryView) {
                   let canvasIndex = (y * width + x) * 4;
                   pixels[canvasIndex] = 0;
@@ -243,9 +244,10 @@ function draw() {
       stroke(0, 255, 0); strokeWeight(2); 
       line(screenCenterX, height, screenCenterX, height - 50);
 
+      // 뱃지 상태 업데이트
       if (isTracking) {
           statusBadge.html(`전송 중: Error ${currentError}`);
-          statusBadge.style('background-color', 'rgba(26, 115, 232, 0.8)');
+          statusBadge.style('background-color', 'rgba(26, 115, 232, 0.8)'); // 파란색
       } else {
           statusBadge.html(`설정 모드: Error ${currentError}`);
           statusBadge.style('background-color', 'rgba(0,0,0,0.6)');
@@ -261,6 +263,7 @@ function draw() {
 
   updateGaugeUI();
   
+  // [핵심] Tracking 상태일 때만 데이터 전송
   if (isTracking) {
       sendDataPeriodically();
   }
@@ -304,6 +307,7 @@ function sendDataPeriodically() {
 }
 
 /* --- Bluetooth Logic --- */
+// (기존과 동일)
 async function connectBluetooth() {
   try {
     bluetoothDevice = await navigator.bluetooth.requestDevice({
