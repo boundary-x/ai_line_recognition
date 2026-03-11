@@ -1,10 +1,8 @@
 /*
  * sketch.js
- * Boundary X Object Detection (Powered by MediaPipe)
- * Features: Auto-Mirroring, Safety Stop, Optimized Rendering
+ * Boundary X Line Tracking (Powered by OpenCV.js)
+ * Features: ROI setup, Binarization, Centroid Tracking, Error visualization
  */
-
-import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2";
 
 // --- Bluetooth UUIDs (Microbit UART) ---
 const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -24,169 +22,161 @@ const SEND_INTERVAL = 100; // 데이터 전송 간격 (ms)
 
 // Video & AI
 let video;
-let detections = []; 
-let selectedObjects = []; 
-let confidenceThreshold = 50; 
-let isObjectDetectionActive = false; 
+let isTrackingActive = false; 
 let wasDetectingBeforeSwitch = false; 
 
 // Camera Control
-let facingMode = "user"; // 초기값: 전방 카메라
-let isFlipped = true;    // 초기값: 거울 모드 (전방이니까)
+let facingMode = "environment"; // 모바일 로봇 기본은 후방 카메라 권장
+let isFlipped = false;    
 let isVideoReady = false; 
 
-// MediaPipe
-let objectDetector;
-let lastVideoTime = -1;
-let isModelLoaded = false;
+// OpenCV Logic Variables
+let isOpenCvLoaded = false;
+let thresholdValue = 100;
+let roiHeightPercent = 30;
+let isDarkLine = true;
 
 // UI Elements
 let switchCameraButton, connectBluetoothButton, disconnectBluetoothButton;
 let startDetectionButton, stopDetectionButton;
-let objectSelect, confidenceSlider;
-let confidenceLabel;
+let thresholdSlider, roiSlider, lineTypeSelect;
+let thresholdLabel, roiLabel;
 let dataDisplay;
-let selectedObjectsListDiv; 
 
-// --- MediaPipe Initialization ---
-async function initializeMediaPipe() {
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm"
-  );
-  
-  objectDetector = await ObjectDetector.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`,
-      delegate: "GPU" // 모바일 GPU 가속 사용
-    },
-    scoreThreshold: 0.3, 
-    runningMode: "VIDEO"
-  });
-  
-  isModelLoaded = true;
-  console.log("MediaPipe Model Loaded!");
-  if(startDetectionButton) startDetectionButton.html("사물 인식 시작");
-}
+// --- Wait for OpenCV.js to load ---
+window.onload = () => {
+  let cvCheck = setInterval(() => {
+    if (typeof cv !== 'undefined' && cv.Mat) {
+      clearInterval(cvCheck);
+      isOpenCvLoaded = true;
+      console.log("OpenCV.js Loaded!");
+      if(startDetectionButton) startDetectionButton.html("라인 추적 시작");
+    }
+  }, 500);
+};
 
 // --- p5.js Main Functions ---
 
 function setup() {
-  // 400x300 캔버스 생성
   let canvas = createCanvas(400, 300);
   canvas.parent('p5-container');
   canvas.style('border-radius', '16px');
   
   setupCamera();
   createUI();
-  initializeMediaPipe();
 }
 
 function draw() {
   background(0); 
 
-  // 카메라 준비 안됐으면 로딩 텍스트
   if (!isVideoReady || !video || video.width === 0) {
     fill(255); textAlign(CENTER, CENTER); textSize(16);
     text("카메라 로딩 중...", width / 2, height / 2);
     return;
   }
 
-  // 화면 그리기 (반전 여부에 따라 처리)
+  // 1. 원본 화면 그리기
   push();
   if (isFlipped) { translate(width, 0); scale(-1, 1); }
   image(video, 0, 0, width, height);
   pop();
 
-  // 변수 초기화
-  let highestConfidenceObject = null;
-  let detectedCount = 0; 
-  let scaleX = width / video.elt.videoWidth;
-  let scaleY = height / video.elt.videoHeight;
+  // 2. OpenCV 연산 및 시각화 진행
+  if (isTrackingActive && isOpenCvLoaded) {
+    processLineTracking();
+  }
+}
+
+// --- OpenCV Line Tracking Logic ---
+function processLineTracking() {
+  let screenCenter = width / 2;
+  let roiH = Math.floor(height * (roiHeightPercent / 100));
+  let roiY = height - roiH;
+
+  // 캔버스에서 픽셀 데이터 가져오기
+  let src = cv.imread(drawingContext.canvas);
+  let roiRect = new cv.Rect(0, roiY, width, roiH);
+  let roiMat = src.roi(roiRect); 
   
-  // 1. 대장(Target) 찾기
-  if (isObjectDetectionActive && detections.length > 0) {
-    detections.forEach((object) => {
-      if (selectedObjects.includes(object.label) && object.confidence * 100 >= confidenceThreshold) {
-        if (!highestConfidenceObject || object.confidence > highestConfidenceObject.confidence) {
-          highestConfidenceObject = object;
-        }
-      }
-    });
+  let gray = new cv.Mat();
+  let binary = new cv.Mat();
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+
+  // 흑백 변환 및 이진화
+  cv.cvtColor(roiMat, gray, cv.COLOR_RGBA2GRAY);
+  let threshType = isDarkLine ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
+  cv.threshold(gray, binary, thresholdValue, 255, threshType);
+
+  // 외곽선 찾기
+  cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  let maxArea = 0;
+  let maxContourIndex = -1;
+
+  for (let i = 0; i < contours.size(); ++i) {
+    let area = cv.contourArea(contours.get(i));
+    if (area > maxArea) {
+      maxArea = area;
+      maxContourIndex = i;
+    }
   }
 
-  // 2. 박스 그리기 (파란색 or 초록색)
-  if (isObjectDetectionActive && detections.length > 0) {
-    detections.forEach((object) => {
-      if (selectedObjects.includes(object.label) && object.confidence * 100 >= confidenceThreshold) {
-        
-        detectedCount++;
-        
-        let drawX = object.x * scaleX;
-        let drawY = object.y * scaleY;
-        let drawW = object.width * scaleX;
-        let drawH = object.height * scaleY;
+  // --- 시각화 그리기 (연산 결과 바탕으로 덧그림) ---
+  
+  // 1. ROI 영역 박스 (노란색)
+  stroke(255, 204, 0); strokeWeight(2); noFill();
+  rect(0, roiY, width, roiH);
 
-        // 반전 모드일 때 좌표 보정
-        if (isFlipped) drawX = width - drawX - drawW;
+  // 2. 화면 정중앙 목표선 (파란색 점선)
+  stroke(0, 150, 255); strokeWeight(2); drawingContext.setLineDash([5, 5]);
+  line(screenCenter, roiY, screenCenter, height);
+  drawingContext.setLineDash([]); // 원상복구
 
-        if (object === highestConfidenceObject) {
-            // [Target] 파란색 진한 박스
-            stroke(0, 100, 255); strokeWeight(4); noFill();
-            rect(drawX, drawY, drawW, drawH);
-            
-            // 라벨 배경
-            noStroke(); fill(0, 100, 255);
-            rect(drawX, drawY > 20 ? drawY - 25 : drawY, textWidth(object.label) + 55, 25);
-            
-            // 라벨 텍스트
-            fill(255); textSize(16); textStyle(BOLD);
-            text(`${object.label} ${(object.confidence * 100).toFixed(0)}%`, drawX + 5, drawY > 20 ? drawY - 7 : drawY + 18);
-            
-        } else {
-            // [Others] 초록색 얇은 박스
-            stroke(0, 255, 0); strokeWeight(2); noFill();
-            rect(drawX, drawY, drawW, drawH);
-            
-            noStroke(); fill(0, 255, 0); textSize(14); textStyle(NORMAL);
-            text(`${object.label} ${(object.confidence * 100).toFixed(0)}%`, drawX + 5, drawY > 20 ? drawY - 5 : drawY + 20);
-        }
-      }
-    });
-  }
+  // 라인이 충분히 크게 잡혔을 때
+  if (maxContourIndex !== -1 && maxArea > 300) {
+    let cnt = contours.get(maxContourIndex);
+    let moments = cv.moments(cnt, false);
 
-  // 3. 데이터 전송 (대장 좌표 기준 or Stop 신호)
-  if (isObjectDetectionActive) {
+    if (moments.m00 !== 0) {
+      let cx = moments.m10 / moments.m00;
+      let cy = moments.m01 / moments.m00 + roiY; // 원본 캔버스 Y좌표 보정
+      let error = screenCenter - cx; 
+      
+      // 3. 중심점 및 오차선 시각화
+      fill(255, 50, 50); noStroke();
+      circle(cx, cy, 12); // 중심점 (빨간 원)
+
+      stroke(0, 255, 0); strokeWeight(3);
+      line(screenCenter, cy, cx, cy); // 오차선 (초록색)
+
+      fill(255); noStroke(); textSize(16); textStyle(BOLD); textAlign(CENTER);
+      text(`Error: ${Math.round(error)}`, screenCenter + (cx - screenCenter)/2, cy - 15);
+
+      // 데이터 전송
       let currentTime = millis();
       if (currentTime - lastSentTime > SEND_INTERVAL) {
-          
-          if (highestConfidenceObject) {
-              // 사물 인식됨 -> 좌표 전송
-              let obj = highestConfidenceObject;
-              let finalX = obj.x * scaleX;
-              let finalY = obj.y * scaleY;
-              let finalW = obj.width * scaleX;
-              let finalH = obj.height * scaleY;
-              
-              let centerX = finalX + finalW / 2;
-              let centerY = finalY + finalH / 2;
-
-              // 반전 모드 시 중심 좌표도 반전
-              if (isFlipped) centerX = width - centerX;
-              
-              sendBluetoothData(centerX, centerY, finalW, finalH, detectedCount);
-              
-              const dataStr = `x${Math.round(centerX)} y${Math.round(centerY)} w${Math.round(finalW)} h${Math.round(finalH)} d${detectedCount}`;
-              dataDisplay.html(`전송됨: ${dataStr}`);
-              dataDisplay.style("color", "#0f0");
-          } else {
-              // 사물 없음 -> Stop 신호 전송 (d=0)
-              sendBluetoothData(0, 0, 0, 0, 0);
-              dataDisplay.html(`전송됨: 없음 (Stop)`);
-              dataDisplay.style("color", "#888");
-          }
-          lastSentTime = currentTime;
+        let sendData = `x${Math.round(cx)} e${Math.round(error)} d1`;
+        sendBluetoothDataLine(sendData);
+        dataDisplay.html(`전송됨: ${sendData}`);
+        dataDisplay.style("color", "#0f0");
+        lastSentTime = currentTime;
       }
+    }
+  } else {
+    // 라인을 찾지 못함 (Stop 처리)
+    let currentTime = millis();
+    if (currentTime - lastSentTime > SEND_INTERVAL) {
+      sendBluetoothDataLine("stop");
+      dataDisplay.html(`전송됨: 없음 (Stop)`);
+      dataDisplay.style("color", "#888");
+      lastSentTime = currentTime;
+    }
   }
+
+  // 메모리 해제 필수
+  src.delete(); roiMat.delete(); gray.delete(); binary.delete();
+  contours.delete(); hierarchy.delete();
 }
 
 // --- Helper Functions ---
@@ -204,7 +194,7 @@ function setupCamera() {
       clearInterval(videoLoadCheck);
       console.log(`Camera Loaded: ${facingMode}`);
       if (wasDetectingBeforeSwitch) {
-        startObjectDetection();
+        startTracking();
         wasDetectingBeforeSwitch = false;
       }
     }
@@ -242,67 +232,46 @@ function createUI() {
   disconnectBluetoothButton.addClass('stop-button');
   disconnectBluetoothButton.mousePressed(disconnectBluetooth);
 
-  // Selector
-  objectSelect = createSelect();
-  objectSelect.parent('object-select-container');
-  objectSelect.option("사물을 선택하세요", ""); 
-  
-  const objectList = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard",
-    "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush"
-  ];
-  objectList.forEach((item) => objectSelect.option(item));
-  
-  objectSelect.changed(() => {
-      const val = objectSelect.value();
-      if(val && !selectedObjects.includes(val)) addSelectedObject(val);
-      objectSelect.value(""); 
+  // Line Settings UI
+  lineTypeSelect = select('#line-type-select');
+  lineTypeSelect.changed(() => {
+    isDarkLine = (lineTypeSelect.value() === 'dark');
   });
 
-  selectedObjectsListDiv = select('#selected-objects-list');
-
-  // Slider
-  confidenceSlider = createSlider(0, 100, 50);
-  confidenceSlider.parent('confidence-container');
-  updateSliderFill(confidenceSlider);
-
-  confidenceSlider.input(() => {
-    confidenceThreshold = confidenceSlider.value();
-    if(confidenceLabel) confidenceLabel.html(`정확도 기준: ${confidenceThreshold}%`);
-    updateSliderFill(confidenceSlider);
+  thresholdSlider = select('#threshold-slider');
+  thresholdLabel = select('#threshold-label');
+  updateSliderFill(thresholdSlider);
+  thresholdSlider.input(() => {
+    thresholdValue = thresholdSlider.value();
+    thresholdLabel.html(`현재 값: ${thresholdValue}`);
+    updateSliderFill(thresholdSlider);
   });
 
-  confidenceLabel = createDiv(`정확도 기준: ${confidenceThreshold}%`);
-  confidenceLabel.parent('confidence-container');
-  confidenceLabel.style('font-size', '1.2rem');
-  confidenceLabel.style('font-weight', '700');
-  confidenceLabel.style('color', '#000000');
-  confidenceLabel.style('margin-top', '10px');
+  roiSlider = select('#roi-slider');
+  roiLabel = select('#roi-label');
+  updateSliderFill(roiSlider);
+  roiSlider.input(() => {
+    roiHeightPercent = roiSlider.value();
+    roiLabel.html(`화면 하단 ${roiHeightPercent}% 사용`);
+    updateSliderFill(roiSlider);
+  });
 
   // Start/Stop Buttons
   startDetectionButton = createButton("모델 로딩 중...");
   startDetectionButton.parent('object-control-buttons');
   startDetectionButton.addClass('start-button');
   startDetectionButton.mousePressed(() => {
-    if (!isModelLoaded) { alert("AI 모델 로딩 중입니다."); return; }
+    if (!isOpenCvLoaded) { alert("OpenCV 모델 로딩 중입니다."); return; }
     if (!isConnected) { alert("블루투스가 연결되지 않았습니다!"); return; }
-    if (selectedObjects.length === 0) { alert("사물을 선택해주세요."); return; }
-    startObjectDetection();
+    startTracking();
   });
 
-  stopDetectionButton = createButton("인식 중지");
+  stopDetectionButton = createButton("주행 중지");
   stopDetectionButton.parent('object-control-buttons');
   stopDetectionButton.addClass('stop-button');
   stopDetectionButton.mousePressed(() => {
-    stopObjectDetection();
-    sendBluetoothData("stop"); // 정지 시 Stop 신호 전송
+    stopTracking();
+    sendBluetoothDataLine("stop"); 
   });
 
   updateBluetoothStatusUI();
@@ -313,74 +282,25 @@ function updateSliderFill(slider) {
     slider.elt.style.background = `linear-gradient(to right, #000000 ${val}%, #D1D5DB ${val}%)`;
 }
 
-function addSelectedObject(objName) {
-    selectedObjects.push(objName);
-    renderSelectedObjects();
-}
-
-function removeSelectedObject(objName) {
-    selectedObjects = selectedObjects.filter(item => item !== objName);
-    renderSelectedObjects();
-}
-
-function renderSelectedObjects() {
-    selectedObjectsListDiv.html(''); 
-    selectedObjects.forEach(obj => {
-        const tag = createDiv();
-        tag.addClass('tag-item');
-        tag.html(`${obj} <span class="tag-remove">&times;</span>`);
-        tag.parent(selectedObjectsListDiv);
-        tag.mouseClicked(() => removeSelectedObject(obj));
-    });
-}
-
 function switchCamera() {
-  wasDetectingBeforeSwitch = isObjectDetectionActive;
-  isObjectDetectionActive = false; 
+  wasDetectingBeforeSwitch = isTrackingActive;
+  isTrackingActive = false; 
   stopVideo(); 
   isVideoReady = false;
   
-  // 카메라 전환 및 자동 거울 모드 설정
   facingMode = facingMode === "user" ? "environment" : "user";
   isFlipped = (facingMode === "user");
 
   setTimeout(setupCamera, 500);
 }
 
-function startObjectDetection() {
+function startTracking() {
   if (!isVideoReady) { console.warn("카메라 준비 안됨"); return; }
-  isObjectDetectionActive = true;
-  predictWebcam(); 
+  isTrackingActive = true;
 }
 
-function stopObjectDetection() {
-  isObjectDetectionActive = false;
-  detections = []; 
-}
-
-// MediaPipe Inference Loop
-async function predictWebcam() {
-  if (!isObjectDetectionActive || !isVideoReady || !video) return;
-  let startTimeMs = performance.now();
-
-  if (video.elt.currentTime !== lastVideoTime) {
-    lastVideoTime = video.elt.currentTime;
-    const result = objectDetector.detectForVideo(video.elt, startTimeMs);
-    
-    if (result.detections) {
-      detections = result.detections.map(d => {
-        return {
-          label: d.categories[0].categoryName.toLowerCase(), 
-          confidence: d.categories[0].score, 
-          x: d.boundingBox.originX,
-          y: d.boundingBox.originY,
-          width: d.boundingBox.width,
-          height: d.boundingBox.height
-        };
-      });
-    }
-  }
-  if (isObjectDetectionActive) window.requestAnimationFrame(predictWebcam);
+function stopTracking() {
+  isTrackingActive = false;
 }
 
 // --- Bluetooth Logic ---
@@ -429,31 +349,23 @@ function updateBluetoothStatusUI(connected = false, error = false) {
   }
 }
 
-async function sendBluetoothData(x, y, width, height, detectedCount) {
-  if (!rxCharacteristic || !isConnected) return;
-  if (isSendingData) return;
-  
+async function sendBluetoothDataLine(dataStr) {
+  if (!rxCharacteristic || !isConnected || isSendingData) return;
   try {
     isSendingData = true; 
     
-    // Stop 신호 처리 (좌표가 stop 이거나 감지된 수가 0일 때)
-    if (x === "stop" || detectedCount === 0) {
+    if (dataStr === "stop") {
       const encoder = new TextEncoder();
       await rxCharacteristic.writeValue(encoder.encode("stop\n"));
       return;
     }
     
-    // 일반 데이터 전송
-    if (detectedCount > 0) {
-      const data = `x${Math.round(x)}y${Math.round(y)}w${Math.round(width)}h${Math.round(height)}d${detectedCount}\n`;
-      const encoder = new TextEncoder();
-      await rxCharacteristic.writeValue(encoder.encode(data));
-    }
+    const encoder = new TextEncoder();
+    await rxCharacteristic.writeValue(encoder.encode(dataStr + "\n"));
 
   } catch (error) { console.error(error); } 
   finally { isSendingData = false; }
 }
 
-// Global Scope Export (for HTML)
 window.setup = setup;
 window.draw = draw;
