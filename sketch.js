@@ -1,7 +1,7 @@
 /*
  * sketch.js
  * Boundary X Line Tracking (Powered by OpenCV.js)
- * Features: ROI setup, Binarization, Centroid Tracking, Error visualization
+ * Features: ROI setup, Gaussian Blur, Binarization Debug View, Centroid Tracking
  */
 
 // --- Bluetooth UUIDs (Microbit UART) ---
@@ -10,6 +10,7 @@ const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 const UART_RX_CHARACTERISTIC_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
 // --- Variables ---
+let mainCanvas; // 전역 캔버스 변수
 let bluetoothDevice = null;
 let rxCharacteristic = null;
 let txCharacteristic = null;
@@ -26,7 +27,7 @@ let isTrackingActive = false;
 let wasDetectingBeforeSwitch = false; 
 
 // Camera Control
-let facingMode = "environment"; // 모바일 로봇 기본은 후방 카메라 권장
+let facingMode = "environment"; // 모바일 로봇 기본은 후방 카메라
 let isFlipped = false;    
 let isVideoReady = false; 
 
@@ -58,9 +59,9 @@ window.onload = () => {
 // --- p5.js Main Functions ---
 
 function setup() {
-  let canvas = createCanvas(400, 300);
-  canvas.parent('p5-container');
-  canvas.style('border-radius', '16px');
+  mainCanvas = createCanvas(400, 300);
+  mainCanvas.parent('p5-container');
+  mainCanvas.style('border-radius', '16px');
   
   setupCamera();
   createUI();
@@ -94,7 +95,7 @@ function processLineTracking() {
   let roiY = height - roiH;
 
   // 캔버스에서 픽셀 데이터 가져오기
-  let src = cv.imread(drawingContext.canvas);
+  let src = cv.imread(mainCanvas.elt);
   let roiRect = new cv.Rect(0, roiY, width, roiH);
   let roiMat = src.roi(roiRect); 
   
@@ -103,12 +104,28 @@ function processLineTracking() {
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
 
-  // 흑백 변환 및 이진화
+  // 1. 흑백 변환
   cv.cvtColor(roiMat, gray, cv.COLOR_RGBA2GRAY);
+
+  // 2. 가우시안 블러 적용 (바닥 노이즈, 그림자, 질감 제거)
+  let ksize = new cv.Size(5, 5);
+  cv.GaussianBlur(gray, gray, ksize, 0, 0, cv.BORDER_DEFAULT);
+
+  // 3. 이진화 (Thresholding)
   let threshType = isDarkLine ? cv.THRESH_BINARY_INV : cv.THRESH_BINARY;
   cv.threshold(gray, binary, thresholdValue, 255, threshType);
 
-  // 외곽선 찾기
+  // 4. [핵심] 이진화된 흑백 화면을 ROI 영역에 덮어쓰기 (사용자 디버깅용)
+  let binaryRGBA = new cv.Mat();
+  cv.cvtColor(binary, binaryRGBA, cv.COLOR_GRAY2RGBA);
+  let outImg = createImage(binaryRGBA.cols, binaryRGBA.rows);
+  outImg.drawingContext.putImageData(
+    new ImageData(new Uint8ClampedArray(binaryRGBA.data), binaryRGBA.cols, binaryRGBA.rows), 
+    0, 0
+  );
+  image(outImg, 0, roiY); // 화면 하단에 흑백 뷰어 출력
+
+  // 5. 외곽선 찾기
   cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   let maxArea = 0;
@@ -122,7 +139,7 @@ function processLineTracking() {
     }
   }
 
-  // --- 시각화 그리기 (연산 결과 바탕으로 덧그림) ---
+  // --- 시각화 오버레이 그리기 ---
   
   // 1. ROI 영역 박스 (노란색)
   stroke(255, 204, 0); strokeWeight(2); noFill();
@@ -133,7 +150,7 @@ function processLineTracking() {
   line(screenCenter, roiY, screenCenter, height);
   drawingContext.setLineDash([]); // 원상복구
 
-  // 라인이 충분히 크게 잡혔을 때
+  // 3. 라인이 충분히 크게 잡혔을 때 (노이즈 필터링 면적: 300)
   if (maxContourIndex !== -1 && maxArea > 300) {
     let cnt = contours.get(maxContourIndex);
     let moments = cv.moments(cnt, false);
@@ -143,13 +160,20 @@ function processLineTracking() {
       let cy = moments.m01 / moments.m00 + roiY; // 원본 캔버스 Y좌표 보정
       let error = screenCenter - cx; 
       
-      // 3. 중심점 및 오차선 시각화
+      // 반전 모드 시 오차 방향 반전
+      if (isFlipped) {
+          error = -error;
+      }
+
+      // 중심점 (빨간 원)
       fill(255, 50, 50); noStroke();
-      circle(cx, cy, 12); // 중심점 (빨간 원)
+      circle(cx, cy, 12); 
 
+      // 오차선 (초록색)
       stroke(0, 255, 0); strokeWeight(3);
-      line(screenCenter, cy, cx, cy); // 오차선 (초록색)
+      line(screenCenter, cy, cx, cy); 
 
+      // 오차값 텍스트
       fill(255); noStroke(); textSize(16); textStyle(BOLD); textAlign(CENTER);
       text(`Error: ${Math.round(error)}`, screenCenter + (cx - screenCenter)/2, cy - 15);
 
@@ -174,9 +198,9 @@ function processLineTracking() {
     }
   }
 
-  // 메모리 해제 필수
+  // 메모리 해제 필수 (브라우저 다운 방지)
   src.delete(); roiMat.delete(); gray.delete(); binary.delete();
-  contours.delete(); hierarchy.delete();
+  contours.delete(); hierarchy.delete(); binaryRGBA.delete();
 }
 
 // --- Helper Functions ---
