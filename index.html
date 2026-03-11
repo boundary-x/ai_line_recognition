@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>바운더리엑스 AI 사물인식</title>
+  <title>바운더리엑스 AI 라인트래킹</title>
   
   <link rel="icon" href="https://raw.githubusercontent.com/boundary-x/ai_teachable_machine/refs/heads/main/Favicon.png"/> 
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
   
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
   <link rel="stylesheet" type="text/css" href="style.css">
@@ -19,7 +20,7 @@
       <a href="https://boundaryx.io">
         <img src="https://raw.githubusercontent.com/boundary-x/ai_voice_recognition/refs/heads/main/boundaryx_logo.png" alt="Logo">
       </a>
-      AI 사물인식
+      AI 라인트래킹
     </div>
     <a href="https://boundaryx.io/59" class="back-button">돌아가기</a>
   </header>
@@ -33,12 +34,11 @@
         <h3>🖥️ 전송 데이터 확인</h3>
         <div class="data-info-box">
           <p class="info-title">📢 <strong>전송 데이터 안내</strong></p>
-          <p class="info-desc">인식된 사물 중 <strong>인식률(정확도)이 가장 높은 사물 1개</strong>의 기준 데이터가 전송됩니다.</p>
+          <p class="info-desc">화면 하단의 라인을 인식하여 <strong>오차값(Error)</strong>을 마이크로비트로 전송합니다.</p>
           <div class="info-tags">
-            <span><strong>x, y</strong> : 중심 좌표</span>
-            <span><strong>w</strong> : 너비</span>
-            <span><strong>h</strong> : 높이</span>
-            <span><strong>d</strong> : 전체 감지 수</span>
+            <span><strong>x</strong> : 라인 중심 좌표</span>
+            <span><strong>e</strong> : 오차값 (P제어용)</span>
+            <span><strong>d</strong> : 라인 감지 (1=정상, 0=정지)</span>
           </div>
         </div>
         <div id="dataDisplay" class="data-display">전송 대기 중...</div>
@@ -58,16 +58,27 @@
       </div>
 
       <div class="control-group">
-        <h3>3. 인식 설정</h3>
-        <p>인식할 사물을 추가하고 정확도를 설정해주세요.</p>
-        <div id="object-select-container" class="model-selection"></div>
-        <div id="selected-objects-list" class="selected-tags"></div>
-        <div id="confidence-container" class="model-key" style="margin-top: 20px;"></div>
+        <h3>3. 라인 인식 설정</h3>
+        <p>조명과 바닥 색상에 맞게 선이 잘 인식되도록 조절하세요.</p>
+        
+        <label style="font-weight: 600; font-size: 0.95rem; display:block; margin-top:10px;">라인 타입 (어두운 선 / 밝은 선)</label>
+        <select id="line-type-select">
+          <option value="dark">어두운 선 (검은 테이프 등)</option>
+          <option value="light">밝은 선 (흰/노란 테이프 등)</option>
+        </select>
+
+        <label style="font-weight: 600; font-size: 0.95rem; display:block; margin-top:15px;">이진화 임계값 (Threshold)</label>
+        <input type="range" id="threshold-slider" min="0" max="255" value="100">
+        <div id="threshold-label" style="font-weight: bold; color: var(--primary);">현재 값: 100</div>
+
+        <label style="font-weight: 600; font-size: 0.95rem; display:block; margin-top:15px;">인식 영역 (ROI) 높이</label>
+        <input type="range" id="roi-slider" min="10" max="100" value="30">
+        <div id="roi-label" style="font-weight: bold; color: var(--primary);">화면 하단 30% 사용</div>
       </div>
 
       <div class="control-group">
-        <h3>4. 사물 인식 제어</h3>
-        <p>시작 버튼을 눌러 AI 인식을 시작하세요.</p>
+        <h3>4. 자율 주행 제어</h3>
+        <p>시작 버튼을 눌러 라인 추적을 시작하세요.</p>
         <div id="object-control-buttons" class="button-group"></div>
       </div>
 
