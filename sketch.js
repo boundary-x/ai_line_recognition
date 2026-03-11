@@ -1,7 +1,7 @@
 /*
  * sketch.js
  * Boundary X Line Tracking (Powered by OpenCV.js)
- * Features: ROI setup, Gaussian Blur, Binarization Debug View, Centroid Tracking
+ * Features: ROI setup, Gaussian Blur, Binarization Debug View, Centroid Tracking, Pixel Density Fix
  */
 
 // --- Bluetooth UUIDs (Microbit UART) ---
@@ -10,7 +10,7 @@ const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 const UART_RX_CHARACTERISTIC_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
 // --- Variables ---
-let mainCanvas; // 전역 캔버스 변수
+let mainCanvas; 
 let bluetoothDevice = null;
 let rxCharacteristic = null;
 let txCharacteristic = null;
@@ -62,6 +62,9 @@ function setup() {
   mainCanvas = createCanvas(400, 300);
   mainCanvas.parent('p5-container');
   mainCanvas.style('border-radius', '16px');
+  
+  // 👉 고해상도 디스플레이 픽셀 매칭 (흑백 뷰어 확대 현상 방지)
+  pixelDensity(1); 
   
   setupCamera();
   createUI();
