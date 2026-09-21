@@ -1,53 +1,149 @@
-# Boundary X · AI Line Recognition
+# 🛤️ Boundary X - AI Line Recognition
 
-Browser-based line tracking with OpenCV.js and micro:bit Bluetooth UART.
+**Boundary X - AI Line Recognition** detects a line in the camera image and calculates left and right motor speeds for a **BBC Micro:bit** robot through **Web Bluetooth (BLE)**.
 
-[Open the web app](https://boundary-x.github.io/ai_line_recognition/)
+Powered by **OpenCV.js**, camera images are processed locally in the browser. No model training is required. Students can explore how line position changes steering while the micro:bit receives ready-to-use motor speeds.
 
-## Features
+![Project Status](https://img.shields.io/badge/Status-Active-success)
+![Platform](https://img.shields.io/badge/Platform-Web-blue)
+![Tech](https://img.shields.io/badge/Stack-OpenCV.js%20%7C%20Canvas%20%7C%20BLE-00E676)
 
-- Automatic rear-camera preview, front/rear switching, and mirroring.
-- A consistent 4:3 center crop with responsive, sticky preview.
-- Dark/light line selection, threshold adjustment, and bottom-region selection.
-- Optional binary preview for separating the line from the background.
-- Recognition preview works without a Bluetooth connection.
-- Explicit transmission controls and connection/error feedback.
-- In-app walkthrough, example-code section, troubleshooting cards, and update notes.
+**[Open the Web App](https://boundary-x.github.io/ai_line_recognition/)**
 
-## Quick start
+---
 
-1. Allow camera access and place the line in the yellow detection region.
-2. Choose dark or light line. Enable the binary view and adjust the threshold until the line is white and the background is black.
-3. Check the detected center and error before connecting a robot.
-4. Connect a micro:bit running a compatible Bluetooth UART receiver.
-5. Select **Start transmission**. Select **Stop transmission** to send `L000R000` and keep previewing.
+## ✨ Key Features
 
-The project-example and class-material links are intentionally pending. The Bluetooth name-check example only identifies the device; it is not a robot controller.
+### 1. 🔍 Camera-Based Line Detection
 
-## Motor-speed protocol
+- **Detection Region:** Adjustable bottom region, using 30% of the image by default.
+- **Line Type:** Supports dark lines on a light background or light lines on a dark background.
+- **Threshold Adjustment:** Separates the line from its background.
+- **Binary Preview:** Enabled by default; detected foreground appears white and background appears black. It can be switched off.
+- **Visual Feedback:** Yellow region outline, center reference, detected centroid, and position error.
 
-Use a micro:bit receiver that reads the left and right motor speeds.
+The largest external contour over 300 pixels² is selected. Detection uses image processing rather than a trained neural model; shadows, floor patterns, and intersections can affect the result.
 
-Messages are 8 ASCII characters plus LF (9 bytes): L080R120\n means left 80, right 120. L000R000\n means stop, including line loss and manual transmission stop.
+### 2. 🎮 Motor-Speed Control
 
-Each speed uses three zero-padded digits and is limited to 0–140. Left motors are 3/4; right motors are 1/2. No reverse motion is requested.
+- **Base Speed:** Adjustable from 0 to 140; default 80.
+- **Steering Sensitivity:** Adjustable from 0 to 1; default 0.4.
+- **Ready-to-Use Output:** Computes left and right speeds in the browser, simplifying the micro:bit program.
+- **Speed Limits:** Rounded and limited to 0–140, with no reverse motion. Base speed 0 stops both sides.
+- **Independent Preview:** Recognition and calculated speeds can be checked without connecting a robot.
 
-The web app computes error = 200 - x, correction = error × sensitivity, left = base - correction, right = base + correction, then rounds and clamps speeds. Default base is 80 and sensitivity 0.4. Base 0 overrides both outputs to zero. The preview shows computed commands, not measured wheel speed. Expand the principle panel for live calculations.
+### 3. 💡 Learn How Steering Works
 
-**Sent** means the Bluetooth write completed, not that the robot acknowledged motion. Stop commands take priority. Camera/configuration changes, walkthrough start, and tab hiding stop transmission; explicit restart is required. A micro:bit-side timeout must stop motors if packets stop arriving. Page-exit delivery is best effort.
+- Left and right speed bars show the calculated motor commands.
+- The expandable **How It Works** panel shows line position, error, correction, and resulting speeds.
+- Moving the line left slows the left motors relative to the right motors; moving it right does the opposite.
+- Mounting the camera on the robot lets students observe the feedback loop: detect, steer, then detect again.
 
-## Detection and limitations
+Speed bars represent commands, not measured wheel speeds.
 
-OpenCV 4.8.0 converts the bottom region to grayscale, applies Gaussian blur and thresholding, then selects the largest external contour over 300 pixels². Its centroid supplies the position. This is conventional computer vision, with no trained neural model. Shadows, large background regions, and intersections can affect detection.
+### 4. 🔗 Wireless Connectivity (BLE)
 
-## Requirements and development
+- Connects to a micro:bit Nordic UART receiver.
+- Explicit **Start Transmission** and **Stop Transmission** controls.
+- Serialized writes with prioritized stop commands.
+- Connection and transmission error messages.
+- Transmission status changes to **Sent** only after the browser write completes.
 
-Camera access requires HTTPS or localhost. Bluetooth requires a browser/platform that supports Web Bluetooth; verify compatibility on the target device. Internet access is required to load OpenCV and shared visual assets. Node.js is **not** required to use the hosted app.
+### 5. 📱 Responsive UI & Support
 
-For local development, serve this directory using any static HTTP server. No build step is required.
+- Automatic rear-camera start, front/rear switching, and horizontal mirroring.
+- A 4:3 center crop with a sticky preview for desktop, tablet, and phone layouts.
+- A 12-step highlighted walkthrough, troubleshooting cards, and update notes.
+- Bluetooth name-check example included; project examples and lesson materials are marked as pending.
+
+---
+
+## 🚀 How to Use
+
+1. Open the app and allow camera access.
+2. Point the rear camera at the line, keeping it inside the yellow detection region.
+3. Choose **Dark Line** or **Light Line**. In the default binary view, adjust the threshold until the line is white and the background is black.
+4. Adjust the detection-region height if needed.
+5. Set **Base Speed** and **Steering Sensitivity**, and check the calculated left/right speeds. Expand **How It Works** to inspect the calculation.
+6. Connect a micro:bit running a compatible motor-speed UART receiver.
+7. Select **Start Transmission**. Select **Stop Transmission** to stop the robot while continuing the preview.
+
+Changing the camera, mirroring, detection settings, or driving settings stops transmission. Starting the walkthrough or hiding the tab also stops transmission. Press Start again after checking the settings.
+
+The Bluetooth name-check example identifies the device; it does not control the robot. The receiver must apply motor speeds and stop its motors when data stops arriving.
+
+---
+
+## 📡 Communication Protocol
+
+Each ASCII message ends with an actual newline, represented below as `\n`.
+
+| Situation | Example | Meaning |
+| --- | --- | --- |
+| Straight ahead | `L080R080\n` | Left 80, right 80 |
+| Turn left | `L060R100\n` | Left 60, right 100 |
+| Turn right | `L100R060\n` | Left 100, right 60 |
+| No line / stopped | `L000R000\n` | Both sides stopped |
+
+| Field | Description |
+| --- | --- |
+| `L` | Left motor speed, three zero-padded digits, 000–140 |
+| `R` | Right motor speed, three zero-padded digits, 000–140 |
+
+A packet contains **8 ASCII characters plus one newline: 9 bytes**. Using zero-based positions, the left value is at 1–3 and the right value is at 5–7. Read until the newline before parsing.
+
+**Steering calculation:**
+
+```text
+error = 200 - lineX
+correction = error × steeringSensitivity
+leftSpeed = baseSpeed - correction
+rightSpeed = baseSpeed + correction
+```
+
+The displayed image uses a 400 × 300 coordinate space. Speeds are rounded and limited to 0–140. Base speed 0 overrides both outputs to zero. Coordinates follow the displayed orientation, including mirroring.
+
+Transmission is limited to at most once per 100 ms and depends on frame processing and Bluetooth speed. **Sent** means the browser write completed, not that the robot acknowledged or executed the command. Page-exit delivery is best effort; the receiver needs a timeout to stop motors after communication is lost.
+
+**Nordic UART UUIDs:**
+
+- Service: `6e400001-b5a3-f393-e0a9-e50e24dcca9e`
+- Write characteristic: `6e400003-b5a3-f393-e0a9-e50e24dcca9e`
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** HTML5, CSS3, JavaScript, Canvas API
+- **Detection:** OpenCV.js 4.8.0
+- **Processing:** Grayscale conversion, Gaussian blur, thresholding, contour selection, and centroid calculation
+- **Connectivity:** Web Bluetooth API
+
+Detection runs at most once every 80 ms on a new camera frame. OpenCV buffers are reused and temporary contour objects are released. Actual performance and heating depend on the phone and scene.
 
 | File | Role |
 | --- | --- |
-| `index.html`, `style.css` | App layout and responsive states |
-| `sketch.js` | Camera, OpenCV detection, and serialized Bluetooth writes |
+| `index.html`, `style.css` | Layout, responsive design, and visual states |
+| `sketch.js` | Camera, line detection, motor calculations, and Bluetooth transmission |
 | `support.js`, `support.css` | Support content and guided walkthrough |
+
+Automated checks cover synthetic line detection, motor-speed calculations, simulated Bluetooth writes, stop priority, and responsive walkthroughs. Physical robot operation and phone-specific performance still require real-device testing.
+
+---
+
+## 🌐 Requirements
+
+- Camera access requires **HTTPS or localhost** and camera permission.
+- Bluetooth requires a **Web Bluetooth-compatible browser** and a compatible micro:bit receiver.
+- Internet access is required to load OpenCV and shared visual assets.
+- **Node.js is not required to use the hosted web app.**
+- For local development, serve this directory with any static HTTP server. No build step is required.
+
+---
+
+## 📝 License
+
+- Copyright © 2024 Boundary X Co. All rights reserved.
+- Third-party components retain their respective licenses.
+- Web: [boundaryx.io](https://boundaryx.io)
+- Contact: [Contact Boundary X](https://boundaryx.io/contact)
