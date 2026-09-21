@@ -34,14 +34,12 @@
         <h3>🖥️ 전송 데이터 확인</h3>
         <div class="data-info-box">
           <p class="info-title">📢 <strong>전송 데이터 안내</strong></p>
-          <p class="info-desc">화면 하단에서 찾은 라인의 위치와 <strong>중앙에서 벗어난 정도</strong>를 전송합니다. 연결 없이도 인식을 확인할 수 있습니다.</p>
+          <p class="info-desc">라인 위치에 맞춰 <strong>왼쪽·오른쪽 모터 속도</strong>를 계산해 전송합니다. 마이크로비트는 받은 속도로 모터를 움직입니다.</p>
           <div class="info-tags">
-            <span><strong>x</strong> : 라인 중심 좌표</span>
-            <span><strong>e</strong> : 오차값 (P제어용)</span>
-            <span><strong>d</strong> : 라인 감지 (1=감지됨)</span>
+            <span><strong>L</strong> : 왼쪽 모터 속도</span><span><strong>R</strong> : 오른쪽 모터 속도</span>
           </div>
         </div>
-        <p class="protocol-note">라인 없음 · 전송 중지: <strong>stop</strong> 전송<br>x: 0~400 · e: −200~200 (왼쪽 + / 오른쪽 −), 각 메시지 끝에 줄바꿈</p><div id="result-display" role="status">인식 엔진 준비 중…</div><div id="engine-status" class="status-box" role="status">인식 엔진 준비 중…</div><div id="dataDisplay" class="data-display">전송 대기 중...</div>
+        <p class="protocol-note">예: <strong>L080R120</strong> → 왼쪽 80, 오른쪽 120<br>라인 없음 · 전송 중지: <strong>L000R000</strong></p><div id="result-display" role="status">인식 엔진 준비 중…</div><div id="engine-status" class="status-box" role="status">인식 엔진 준비 중…</div><div id="dataDisplay" class="data-display">전송 대기 중...</div>
       </div>
 
       <div class="control-group">
@@ -76,8 +74,28 @@
         <div id="roi-label" style="font-weight: bold; color: var(--primary);">화면 하단 30% 사용</div><label class="debug-toggle"><input type="checkbox" id="debug-view"> 인식 영역 확인 (흑백)</label><p class="setting-hint">흑백 보기에서 선은 흰색, 배경은 검은색이 되도록 라인 구분 기준을 조절하세요.</p>
       </div>
 
+
+      <div class="control-group" id="drive-settings">
+        <h3>4. 주행 설정</h3>
+        <label for="base-speed">기본 속도 <output id="base-speed-value">80</output></label>
+        <input id="base-speed" type="range" min="0" max="140" step="5" value="80">
+        <label for="steering-gain">회전 민감도 <output id="steering-gain-value">0.4</output></label>
+        <input id="steering-gain" type="range" min="0" max="1" step="0.05" value="0.4">
+        <p class="setting-hint">민감도를 높이면 더 크게 회전합니다. 조절하면 전송이 중지됩니다. 미리보기를 확인한 뒤 다시 시작하세요.</p>
+        <div id="motor-preview"><strong>계산된 속도 · 미리보기</strong>
+          <div class="motor-speeds"><div><label for="left-meter">왼쪽 <output id="left-speed">0</output></label><meter id="left-meter" min="0" max="140" value="0">0</meter><small>모터 3·4</small></div><div><label for="right-meter">오른쪽 <output id="right-speed">0</output></label><meter id="right-meter" min="0" max="140" value="0">0</meter><small>모터 1·2</small></div></div>
+          <p id="motion-preview">라인을 기다리고 있습니다.</p><code id="packet-preview">L000R000</code>
+          <p class="setting-hint">계산 결과이며 실제 바퀴 속도를 측정한 값은 아닙니다. 전송 성공 여부는 ‘전송 데이터 확인’에서 확인하세요.</p>
+        </div>
+        <details id="principle"><summary>원리 보기</summary>
+          <p>① 선의 위치 찾기 → ② 중앙과의 차이 계산 → ③ 좌우 바퀴 속도 조절</p>
+          <p>왼쪽 바퀴가 느리면 왼쪽으로, 오른쪽 바퀴가 느리면 오른쪽으로 회전합니다.</p>
+          <div id="calculation">라인이 감지되면 계산 과정이 나타납니다.</div>
+          <p class="setting-hint">속도는 0~140으로 제한하며 후진하지 않습니다. 기본 속도 0이면 양쪽 모두 정지합니다. 카메라를 로봇에 고정하면 움직인 결과를 다시 보고 방향을 바로잡습니다. 선은 학습 모델이 아닌 영상의 밝기 차이로 찾습니다.</p>
+        </details>
+      </div>
       <div class="control-group">
-        <h3>4. 데이터 전송</h3>
+        <h3>5. 데이터 전송</h3>
         <p>미리보기에서 인식을 확인한 뒤 전송을 시작하세요. 전송을 중지해도 미리보기는 계속됩니다.</p>
         <div id="object-control-buttons" class="button-group"><button id="start-send" class="start-button" disabled>전송 시작</button><button id="stop-send" class="stop-button" disabled>전송 중지</button></div>
       </div>

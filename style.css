@@ -134,3 +134,13 @@ button:disabled { opacity:.45; cursor:not-allowed; transform:none; }
 @media(max-width:767px) { main { padding:16px; gap:20px; } .canvas-container { width:100%; max-width:480px; } .title { gap:6px; font-size:14px; } .title img { height:20px; } header { padding:12px; } .control-group { padding:22px; } }
 @media(max-width:900px) and (orientation:landscape) { .canvas-container { width:42%; min-width:0; } .controls { width:auto; } footer { display:block; } }
 @media(max-width:359px) { .title { font-size:12px; gap:4px; } .title img { height:16px; } .control-group { padding:16px; } .footer-info { min-width:0; } }
+
+#drive-settings label { display:flex; justify-content:space-between; gap:12px; font-weight:600; }
+.motor-speeds { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:16px 0; }
+.motor-speeds meter { display:block; width:100%; height:24px; }
+.motor-speeds small { color:#666; }
+#motor-preview { background:white; border:1px solid #ddd; border-radius:12px; padding:16px; margin-top:18px; }
+#motion-preview { margin:12px 0 !important; color:#111; font-weight:600; }
+#principle { margin-top:20px; border-top:1px solid #ddd; padding-top:16px; }
+#principle summary { cursor:pointer; font-weight:700; margin-bottom:12px; }
+#calculation { white-space:pre-line; font-size:14px; background:#fff; padding:12px; border-radius:10px; margin-bottom:12px; }

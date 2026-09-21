@@ -20,30 +20,25 @@ Browser-based line tracking with OpenCV.js and micro:bit Bluetooth UART.
 2. Choose dark or light line. Enable the binary view and adjust the threshold until the line is white and the background is black.
 3. Check the detected center and error before connecting a robot.
 4. Connect a micro:bit running a compatible Bluetooth UART receiver.
-5. Select **Start transmission**. Select **Stop transmission** to send `stop` and keep previewing.
+5. Select **Start transmission**. Select **Stop transmission** to send `L000R000` and keep previewing.
 
 The project-example and class-material links are intentionally pending. The Bluetooth name-check example only identifies the device; it is not a robot controller.
 
-## UART protocol
+## Motor-speed protocol
 
-Messages are ASCII text ending in LF (`\n`). The existing protocol is retained:
+Use a micro:bit receiver that reads the left and right motor speeds.
 
-| State | Example |
-| --- | --- |
-| Line detected | `x150 e50 d1\n` |
-| No line / transmission stopped | `stop\n` |
+Messages are 8 ASCII characters plus LF (9 bytes): L080R120\n means left 80, right 120. L000R000\n means stop, including line loss and manual transmission stop.
 
-- `x`: horizontal position in the 400 × 300 displayed image (0–400).
-- `e`: `200 - x`; left is positive, right is negative (−200–200).
-- `d1`: line detected. This app does not transmit `d0`.
-- Mirroring changes both the displayed image and the coordinate direction.
-- Frames are processed at most every 80 ms; transmission is limited to at most once per 100 ms and depends on device performance.
+Each speed uses three zero-padded digits and is limited to 0–140. Left motors are 3/4; right motors are 1/2. No reverse motion is requested.
 
-**Sent** means the Bluetooth write completed, not that the robot acknowledged or completed a movement. Stop commands take priority over pending tracking data. Camera/configuration changes, walkthrough start, and tab hiding stop transmission; resuming requires an explicit start. Page exit delivery is best-effort. The robot must stop its motors when data has not arrived within its configured timeout, because a disconnected browser cannot deliver `stop`.
+The web app computes error = 200 - x, correction = error × sensitivity, left = base - correction, right = base + correction, then rounds and clamps speeds. Default base is 80 and sensitivity 0.4. Base 0 overrides both outputs to zero. The preview shows computed commands, not measured wheel speed. Expand the principle panel for live calculations.
+
+**Sent** means the Bluetooth write completed, not that the robot acknowledged motion. Stop commands take priority. Camera/configuration changes, walkthrough start, and tab hiding stop transmission; explicit restart is required. A micro:bit-side timeout must stop motors if packets stop arriving. Page-exit delivery is best effort.
 
 ## Detection and limitations
 
-OpenCV 4.8.0 converts the bottom region to grayscale, applies Gaussian blur and thresholding, then selects the largest external contour over 300 pixels². Its centroid supplies the position. This is conventional computer vision, with no trained neural model. Shadows, large background regions, and intersections can affect detection. Line selection has not been redesigned in this update.
+OpenCV 4.8.0 converts the bottom region to grayscale, applies Gaussian blur and thresholding, then selects the largest external contour over 300 pixels². Its centroid supplies the position. This is conventional computer vision, with no trained neural model. Shadows, large background regions, and intersections can affect detection.
 
 ## Requirements and development
 
