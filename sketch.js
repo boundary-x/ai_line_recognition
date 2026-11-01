@@ -89,6 +89,7 @@ function frame(now){
  try{
   const result=detectLine();
   const packet=showMotorPreview(result);
+   if(!rx)$('dataDisplay').textContent='전송할 데이터: '+packet;
   $('result-display').textContent=result?'라인 감지됨 · '+(result.error===0?'중앙':result.error>0?'왼쪽':'오른쪽')+' · 오차 '+result.error:'라인 없음';
   if(sending&&now-lastSend>=100){lastSend=now;latest=packet;flush();}
  }catch(error){engineReady=false;requestStop();showMotorPreview(null);releaseMats();engineStatus('인식 처리 오류: '+error.message+' 새로고침해주세요.','error');controls();}
@@ -155,3 +156,5 @@ const engineTimer=setInterval(()=>{
  else if(performance.now()>deadline){clearInterval(engineTimer);engineStatus('인식 엔진을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해주세요.','error');}
 },250);
 controls();startCamera();requestAnimationFrame(frame);
+
+
