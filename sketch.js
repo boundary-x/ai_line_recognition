@@ -120,9 +120,9 @@ async function connect(){
  if(connecting||rx)return;connecting=true;connectionStatus('기기 연결 중…');controls();
  try{
   if(!navigator.bluetooth)throw new Error('이 브라우저는 블루투스를 지원하지 않습니다.');
-  device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'BBC micro:bit'}],optionalServices:[SERVICE]});
+  device=await BoardLink.requestDevice({filters:[{namePrefix:'BBC micro:bit'}],optionalServices:[SERVICE]});
   device.addEventListener('gattserverdisconnected',disconnected);
-  const server=await device.gatt.connect(),service=await server.getPrimaryService(SERVICE);rx=await service.getCharacteristic(RX);
+  const server=await device.gatt.connect(),service=await server.getPrimaryService(SERVICE);rx=await BoardLink.getCharacteristic(service,RX);
   if(!device.gatt.connected)throw new Error('연결이 종료되었습니다.');
   connectionStatus('연결됨: '+device.name,'status-connected');$('dataDisplay').textContent='연결 완료 · 전송 시작을 눌러주세요.';
  }catch(error){if(device?.gatt.connected)device.gatt.disconnect();rx=null;connectionStatus(error.name==='NotFoundError'?'기기 선택을 취소했습니다.':'연결 실패: '+error.message,error.name==='NotFoundError'?'':'status-error');}
